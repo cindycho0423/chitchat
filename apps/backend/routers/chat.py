@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, cast
 from datetime import datetime
 import uuid
 
@@ -28,10 +28,14 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     
     # AI 응답 생성
     try:
-        ai_response = await ai_service.generate_response(
-            message=request.message,
+        response_chunks = []
+        async for chunk in ai_service.generate_stream_response(
+            user_message=request.message,
             history=history
-        )
+        ):
+            response_chunks.append(chunk)
+        
+        ai_response = "".join(response_chunks).strip()
         
         # 메시지 저장
         user_msg = Message(
@@ -70,9 +74,9 @@ async def get_chats(db: Session = Depends(get_db)):
     for chat in chats:
         last_message = db.query(Message).filter(Message.chat_id == chat.id).order_by(Message.created_at.desc()).first()
         result.append(ChatListResponse(
-            chat_id=chat.id,
-            created_at=chat.created_at,
-            last_message=last_message.content if last_message else None,
+            chat_id=cast(str, chat.id),
+            created_at=cast(datetime, chat.created_at),
+            last_message=cast(str, last_message.content) if last_message else None,
             message_count=db.query(Message).filter(Message.chat_id == chat.id).count()
         ))
     
